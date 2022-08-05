@@ -1,5 +1,6 @@
 import logging
 import random
+import asyncio
 
 ppQuest = {
     1:  (1,1,1,1,1),
@@ -11,6 +12,7 @@ ppQuest = {
     10: (3,4,4,5,5)
 }
 
+maxSeconds = 5
 maxAttempts = 5
 
 roles = ('merlin', 'mordred', 'good', 'good', 'evil', 'good', 'evil', 'good', 'good', 'evil')
@@ -23,8 +25,8 @@ rejectEmoji = '\u274C'
 class Game:
     def __init__(self, nplayers, channel):
         self.nplayers = nplayers
-        self.voteAcceptRequired = (nplayers + 1) // 2
-        self.voteRejectRequired = nplayers // 2
+        self.voteAcceptRequired = nplayers // 2 + 1
+        self.voteRejectRequired = (nplayers + 1) // 2
         self.players = []
         self.nameMap = dict()
         self.pmMap = dict()
@@ -44,6 +46,18 @@ class Game:
     def _IPM(self, idx):
         return self.pmMap[self.players[idx]]
     
+    def __repr__(self):
+        if not self.ready:
+            return 'Game not ready.'
+        if self.over:
+            return 'Waiting for the Merlin to be guessed.'
+        return\
+        f"{self.nplayers} player game. It is {self.__cName}'s turn.\n\n" +\
+        f'Players per quest: {"  ".join(map(str,self.ppQuest))}\n' +\
+        f'Quest status     : {"  ".join(map(lambda x: str(x) if x else "+", self.results))}'
+    async def BroadcastState(self):
+        await self.Broadcast(f'```\n{self}\n```')
+           
     @property
     def cID(self):
         return self.players[self.curPlayer]
@@ -55,7 +69,7 @@ class Game:
         return self.pmMap[self.players[self.curPlayer]]
     @property
     def __questSize(self):
-        self.ppQuest[len(self.results)]
+        return self.ppQuest[len(self.results)]
     @property
     def merlin(self):
         for id, r in zip(self.players, roles):
@@ -68,11 +82,10 @@ class Game:
             await pm.send(msg)
     async def Pm(self, id, msg):
         if id in self.pmMap:
-            await self.pmMap[id].send(msg)
-        else:
-            logging.warn(f'{id} tried to send a PM, but they were not in the game.')
+            return await self.pmMap[id].send(msg)
+        logging.warn(f'{id} tried to send a PM, but they were not in the game.')
     async def Broadcast(self, msg):
-        await self.channel.send(msg)
+        return await self.channel.send(msg)
 
     async def AddPlayer(self, user):
         if len(self.players) < self.nplayers:
@@ -116,6 +129,7 @@ class Game:
         self.curPlayer = (self.curPlayer + 1) % self.nplayers
     
     async def _Turn1(self):
+        await self.BroadcastState()
         await self.Broadcast(f'It is {self.__cName}\'s turn. Please select ' + 
                         f'{self.__questSize} players for the next quest.')
     
@@ -124,6 +138,11 @@ class Game:
             await self.Broadcast(f'You must select {self.__questSize} players' + 
                         f' for this quest, but you selected {len(players)}.')
             return
+        for p in players:
+            if p.id not in self.players:
+                await self.Broadcast(f'{p.name} is not in the game.')
+                return
+
         self.voteAccept = 0
         self.voteReject = 0
         self.voteMsg = await self.Broadcast(' '.join(map(lambda p:p.mention, 
@@ -131,6 +150,8 @@ class Game:
             f'Please vote {acceptEmoji} to accept or {rejectEmoji} to reject.' +
             f' {self.voteAcceptRequired} accepts are required for the quest ' + 
             f'to begin.')
+        await self.voteMsg.add_reaction(acceptEmoji)
+        await self.voteMsg.add_reaction(rejectEmoji)
         self.selectPlayers = players
     
     async def AddVote(self, emoji):
@@ -160,48 +181,64 @@ class Game:
             ' '.join(map(lambda p:p.mention, self.selectPlayers)) +
             ' please check your PMs and vote to succeed or fail the quest.')
 
-        self.succeeds = 0
+        self.fails = 0
         
-        for p in self.selectPlayers:
-            # find the position of p based on its id
-            idx = self.players.index(p.id)
-            if good[idx]:
-                self.succeeds += 1
-                continue # good players must succeed
-            failMsg = await self.Pm(p.id, 'Please vote to succeed or fail the quest.')
+        # evilFn = lambda p:evil[self.players.index(p.id)]
+        evilFn = lambda p:True
+        self.badPlayers = filter(evilFn, self.selectPlayers)
+        for p in self.badPlayers:
+            failMsg = await self.Pm(p.id, 'Please vote to `succeed` or `fail`' +
+                f' the quest. You have {maxSeconds} seconds per attempt, and ' + 
+                f'{maxAttempts} attempts.')
+
             channel = self.pmMap[p.id]
-            # get next message from channel
+
             for attempt in range(maxAttempts):
-                msg = await channel.history(limit=1, after=failMsg, oldest_first=False).flatten()
+                timeout = True
+                for _ in range(maxSeconds * 10):
+                    await asyncio.sleep(0.1)
+                    msg = await channel.history(limit=1, after=failMsg, oldest_first=False).flatten()
+                    if msg:
+                        timeout = False
+                        break
+
+                if timeout:
+                    failMsg = await self.Pm(p.id, 'Timed out waiting for your' +
+                    f' vote. You have {attemptsLeft} attempts left otherwise ' +
+                    'you will vote fail by default.')
+
                 msg = msg[0].content.lower()
                 if msg == 'succeed':
-                    self.succeeds += 1
                     break
                 if msg == 'fail':
+                    self.fails += 1
                     break
                 
                 attemptsLeft = maxAttempts - attempt - 1
-                await self.Pm(p.id, 'Please vote to succeed or fail the quest' +
-                    f' using "succeed" or "fail". You have {attemptsLeft} ' + 
-                    'attempts left otherwise you will vote fail by default.')
+                failMsg = await self.Pm(p.id, 'Please vote to succeed or fail' +
+                    f' the quest using `succeed` or `fail`, not `{msg}`. You ' +
+                    f'have {attemptsLeft} attempts left otherwise you will ' +
+                    'vote `fail` by default.')
 
-        self.results.append((self.succeeds == self.__questSize, self.succeeds))
-        if self.results[-1][0]:
-            await self.Broadcast('The quest has succeeded!')
-        else:
+        self.results.append(self.fails)
+        if self.results[-1]:
             await self.Broadcast('The quest has failed due to ' 
-                f'{self.__questSize - self.succeeds} players voting fail.')
+                f'{self.fails} players voting fail.')
+        else:
+            await self.Broadcast('The quest has succeeded!')
         
-        if sum(map(lambda x:x[0], self.results)) >= 3:
+        if sum(map(lambda x:not bool(x), self.results)) >= 3:
             await self.Broadcast('The game has been won by good side. The ' +
                 'evil side has one more chance to guess who is merlin!')
+            await self.BroadcastState()
             self.over = True
             return
-        if sum(map(lambda x:not x[0], self.results)) >= 3:
+        if sum(map(bool, self.results)) >= 3:
             await self.Broadcast('The game has been won by evil side. The ' + 
                 'game is over. Please start a new game.')
+            await self.BroadcastState()
             self = None
             return
     
         self._AdvanceTurn()
-        self._Turn1()
+        await self._Turn1()

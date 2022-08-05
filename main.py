@@ -50,9 +50,7 @@ class Bot:
             if not users:
                 await ctx.send('You must ping at least one user.')
                 return
-            # send the users a message
-            msg = f'{ctx.author.mention} has selected {", ".join(map(lambda u:u.mention, users))}.'
-            await self.game.Broadcast(msg)
+            await self.game.SelectPlayers(users)
         
         @self.client.command()
         async def merlin(ctx, msg=''):
@@ -85,8 +83,9 @@ class Bot:
             self.client.user.id:
                 await self.game.AddPlayer(user)
             
-            if self.game and self.game.ready and reaction.message.id ==        \
-            self.game.voteMsg.id and user.id in self.game.players:
+            if self.game and self.game.ready and self.game.voteMsg and         \
+            reaction.message.id == self.game.voteMsg.id and user.id in         \
+            self.game.players:
                 await self.game.AddVote(reaction.emoji)
 
             
@@ -97,8 +96,9 @@ class Bot:
             self.client.user.id:
                 self.game.RemovePlayer(user.name)
             
-            if self.game and self.game.ready and reaction.message.id ==        \
-            self.game.voteMsg.id and user.id in self.game.players:
+            if self.game and self.game.ready and self.game.voteMsg and         \
+            reaction.message.id == self.game.voteMsg.id and user.id in         \
+            self.game.players:
                 self.game.RemoveVote(reaction.emoji)
 
 
