@@ -69,7 +69,7 @@ class Game:
     async def Pm(self, id, msg):
         if id in self.pmMap:
             return await self.pmMap[id].send(msg)
-        logging.warn(f'{id} tried to send a PM, but they were not in the game.')
+        logging.warning(f'{id} tried to send a PM, but they were not in the game.')
     async def Broadcast(self, msg):
         return await self.channel.send(msg)
 
@@ -88,7 +88,7 @@ class Game:
                 await self._Start()
                 return True
         else:
-            logging.warn(f'{user.name} tried to join the game, but it was full.')
+            logging.warning(f'{user.name} tried to join the game, but it was full.')
         return False
 
     def RemovePlayer(self, id):

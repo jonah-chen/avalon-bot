@@ -1,4 +1,4 @@
-start_emoji = '\u2705'
+startEmoji = '\U0001F633'
 
 
 from nextcord import Intents
@@ -30,8 +30,8 @@ class Bot:
                 await ctx.send('A game is already in progress.')
                 return
             
-            self.startMsg = await ctx.send(f'{players} players are ready to play.')
-            await self.startMsg.add_reaction(start_emoji)
+            self.startMsg = await ctx.send(f'Waiting for {players} players to join.')
+            await self.startMsg.add_reaction(startEmoji)
             self.game = Game(players, ctx)
         
         @self.client.command(help='Force stop the game.')
@@ -39,6 +39,7 @@ class Bot:
         async def forcestop(ctx):
             self.game = None
             await ctx.send('A game may have been stopped by force.')
+            logging.warning('A game was stopped by force.')
         
         @self.client.command(help='Select players for a quest.')
         async def select(ctx, msg=''):
