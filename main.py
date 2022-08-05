@@ -82,7 +82,7 @@ class Bot:
         @self.client.event
         async def on_reaction_add(reaction, user):
             if self.startMsg and self.game and reaction.message.id ==          \
-            self.startMsg.id and reaction.emoji == start_emoji and user.id !=  \
+            self.startMsg.id and reaction.emoji == startEmoji and user.id !=  \
             self.client.user.id:
                 await self.game.AddPlayer(user)
             
@@ -95,7 +95,7 @@ class Bot:
         @self.client.event
         async def on_reaction_remove(reaction, user):
             if self.startMsg and self.game and reaction.message.id ==          \
-            self.startMsg.id and reaction.emoji == start_emoji and user.id !=  \
+            self.startMsg.id and reaction.emoji == startEmoji and user.id !=  \
             self.client.user.id:
                 self.game.RemovePlayer(user.name)
             
