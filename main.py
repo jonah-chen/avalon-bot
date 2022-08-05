@@ -1,58 +1,60 @@
-from nextcord import Intents
-from nextcord.ext.commands import Bot as _Bot
-import os
-from game import Game, good
-import logging
-
-
-valid_nplayers = {1,5,6,7,8,9,10}
 start_emoji = '\u2705'
+
+
+from nextcord import Intents
+from nextcord.ext import commands
+import os
+from game import Game, good, ppQuest as validNPlayers
+import logging
 
 class Bot:
     def __init__(self, __prefix='!'):
         __intents = Intents.default()
         __intents.message_content = True
-        self.client = _Bot(command_prefix=__prefix, intents=__intents)
-
+        self.client = commands.Bot(command_prefix=__prefix, intents=__intents)
         self.game = None
     
     def main(self):
-        @self.client.command()
-        async def ping(ctx):
-            await ctx.send(':flushed:')
-
-        @self.client.command()
+        @self.client.command(help='Start a game with a specified number of players.')
         async def start(ctx, msg=''):
             try:
                 players = int(msg)
             except ValueError:
                 await ctx.send(f'"{msg}" is not a number.')
                 return
-            
-            if players not in valid_nplayers:
-                await ctx.send(f'{players} is not a valid number of players for the game.')
+            if players not in validNPlayers:
+                await ctx.send(f'{players} is not a valid number of players ' +
+                    'for the game.')
+                return
+            if self.game:
+                await ctx.send('A game is already in progress.')
                 return
             
-
             self.startMsg = await ctx.send(f'{players} players are ready to play.')
             await self.startMsg.add_reaction(start_emoji)
             self.game = Game(players, ctx)
         
-        @self.client.command()
+        @self.client.command(help='Force stop the game.')
+        @commands.has_permissions(kick_members=True)
+        async def forcestop(ctx):
+            self.game = None
+            await ctx.send('A game may have been stopped by force.')
+        
+        @self.client.command(help='Select players for a quest.')
         async def select(ctx, msg=''):
             if not self.game or not self.game.ready:
                 return
             if ctx.author.id != self.game.cID:
-                return
+                await ctx.send('It is not your turn.')
             
             # find the users pinged
             users = ctx.message.mentions
             if not users:
-                await ctx.send('You must ping at least one user.')
+                await ctx.send('You must select at least one user.')
                 return
             await self.game.SelectPlayers(users)
         
-        @self.client.command()
+        @self.client.command(help='Guess the Merlin.')
         async def merlin(ctx, msg=''):
             if not self.game or not self.game.ready or not self.game.over:
                 return
@@ -107,5 +109,4 @@ class Bot:
 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
-
 Bot().main()

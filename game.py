@@ -1,9 +1,4 @@
-import logging
-import random
-import asyncio
-
 ppQuest = {
-    1:  (1,1,1,1,1),
     5:  (2,3,2,3,3),
     6:  (2,3,4,3,4),
     7:  (2,3,3,4,4),
@@ -21,6 +16,11 @@ evil = (not a for a in good)
 
 acceptEmoji = '\u2705'
 rejectEmoji = '\u274C'
+
+
+import logging
+import random
+import asyncio
 
 class Game:
     def __init__(self, nplayers, channel):
@@ -40,11 +40,6 @@ class Game:
         self.ready = False
         self.over = False
         logging.info('Game created.')
-
-    def _IName(self, idx):
-        return self.nameMap[self.players[idx]]
-    def _IPM(self, idx):
-        return self.pmMap[self.players[idx]]
     
     def __repr__(self):
         if not self.ready:
@@ -61,15 +56,6 @@ class Game:
     @property
     def cID(self):
         return self.players[self.curPlayer]
-    @property
-    def __cName(self):
-        return self.nameMap[self.players[self.curPlayer]]
-    @property
-    def __cPM(self):
-        return self.pmMap[self.players[self.curPlayer]]
-    @property
-    def __questSize(self):
-        return self.ppQuest[len(self.results)]
     @property
     def merlin(self):
         for id, r in zip(self.players, roles):
@@ -109,30 +95,6 @@ class Game:
         if not self.game.ready and id in self.players:
             self.players.remove(id)
     
-    async def _Start(self):
-        logging.info('Game started.')
-        await self.Broadcast('The game has started, please check your PMs to see your role.')
-        random.shuffle(self.players)
-        for e, r, id in zip(evil, roles, self.players):
-            await self.Pm(id, f'Your role is {r}.')            
-            if r == 'merlin':
-                for r, _id in zip(roles, self.players):
-                    if r == 'evil':
-                        await self.Pm(_id, f'{self.nameMap[_id]} is evil.')
-            elif e:
-                for e, _id in zip(evil, self.players):
-                    if e and id != _id:
-                        await self.Pm(id, f'{self.nameMap[_id]} is also evil.')
-        await self._Turn1()
-
-    def _AdvanceTurn(self):
-        self.curPlayer = (self.curPlayer + 1) % self.nplayers
-    
-    async def _Turn1(self):
-        await self.BroadcastState()
-        await self.Broadcast(f'It is {self.__cName}\'s turn. Please select ' + 
-                        f'{self.__questSize} players for the next quest.')
-    
     async def SelectPlayers(self, players):
         if len(players) != self.__questSize:
             await self.Broadcast(f'You must select {self.__questSize} players' + 
@@ -161,7 +123,7 @@ class Game:
             self.voteReject += 1
 
         if self.voteAccept >= self.voteAcceptRequired:
-            await self._Turn3()
+            await self._Turn2()
         if self.voteReject >= self.voteRejectRequired:
             await self.Broadcast('The quest has been rejected by a vote of ' +
                 f'{self.voteAccept} - {self.voteReject}.')
@@ -173,8 +135,42 @@ class Game:
             self.voteAccept -= 1
         if emoji == rejectEmoji:
             self.voteReject -= 1
+    
+    async def _Start(self):
+        logging.info('Game started.')
+        await self.Broadcast('The game has started, please check your PMs to see your role.')
+        random.shuffle(self.players)
+        for e, r, id in zip(evil, roles, self.players):
+            await self.Pm(id, f'Your role is {r}.')            
+            if r == 'merlin':
+                for r, _id in zip(roles, self.players):
+                    if r == 'evil':
+                        await self.Pm(_id, f'{self.nameMap[_id]} is evil.')
+            elif e:
+                for e, _id in zip(evil, self.players):
+                    if e and id != _id:
+                        await self.Pm(id, f'{self.nameMap[_id]} is also evil.')
+        await self._Turn1()
 
-    async def _Turn3(self):
+    @property
+    def __cName(self):
+        return self.nameMap[self.players[self.curPlayer]]
+    @property
+    def __cPM(self):
+        return self.pmMap[self.players[self.curPlayer]]
+    @property
+    def __questSize(self):
+        return self.ppQuest[len(self.results)]
+
+    def _AdvanceTurn(self):
+        self.curPlayer = (self.curPlayer + 1) % self.nplayers
+    
+    async def _Turn1(self):
+        await self.BroadcastState()
+        await self.Broadcast(f'It is {self.__cName}\'s turn. Please select ' + 
+                        f'{self.__questSize} players for the next quest.')
+
+    async def _Turn2(self):
         await self.Broadcast('The quest has been accepted by a vote of ' +
             f'{self.voteAccept} - {self.voteReject}.')
         await self.Broadcast('The quest has begun. ' + 
