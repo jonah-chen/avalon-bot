@@ -10,9 +10,9 @@ ppQuest = {
 maxSeconds = 5
 maxAttempts = 5
 
-roles = ('merlin', 'mordred', 'good', 'good', 'evil', 'good', 'evil', 'good', 'good', 'evil')
+roles = ('merlin', 'mordred', 'good', 'good', 'evil', 'percival', 'evil', 'good', 'good', 'evil')
 good = (True, False, True, True, False, True, False, True, True, False)
-evil = (not a for a in good)
+evil = tuple(not a for a in good)
 
 acceptEmoji = '\u2705'
 rejectEmoji = '\u274C'
@@ -35,6 +35,7 @@ class Game:
         self.curPlayer = random.randint(0, nplayers-1)
         self.ppQuest = ppQuest[nplayers]
         self.results = []
+        self.startMsg = None
         self.voteMsg = None
 
         self.ready = False
@@ -80,7 +81,11 @@ class Game:
                 channel = await user.create_dm()
             self.pmMap[user.id] = channel
             self.nameMap[user.id] = user.name
-            self.players.append(user.id)
+            if user.id in self.players:
+                logging.warning(f'{user.name} tried to join the game twice.')
+                return
+            else:
+                self.players.append(user.id)
 
             logging.info(f'{user.name} joined the game.')
             if len(self.players) == self.nplayers:
@@ -94,6 +99,7 @@ class Game:
     def RemovePlayer(self, id):
         if not self.game.ready and id in self.players:
             self.players.remove(id)
+            logging.info(f'{self.nameMap[id]} left the game.')
     
     async def SelectPlayers(self, players):
         if len(players) != self.__questSize:
@@ -122,9 +128,11 @@ class Game:
         elif emoji == rejectEmoji:
             self.voteReject += 1
 
-        if self.voteAccept >= self.voteAcceptRequired:
+        if self.voteAccept == self.voteAcceptRequired:
+            self.voteMsg = None
             await self._Turn2()
-        if self.voteReject >= self.voteRejectRequired:
+        if self.voteReject == self.voteRejectRequired:
+            self.voteMsg = None
             await self.Broadcast('The quest has been rejected by a vote of ' +
                 f'{self.voteAccept} - {self.voteReject}.')
             self._AdvanceTurn()
@@ -140,15 +148,20 @@ class Game:
         logging.info('Game started.')
         await self.Broadcast('The game has started, please check your PMs to see your role.')
         random.shuffle(self.players)
+        
         for e, r, id in zip(evil, roles, self.players):
-            await self.Pm(id, f'Your role is {r}.')            
+            await self.Pm(id, f'Your role is {r}.')      
             if r == 'merlin':
-                for r, _id in zip(roles, self.players):
-                    if r == 'evil':
-                        await self.Pm(_id, f'{self.nameMap[_id]} is evil.')
+                for _r, _id in zip(roles, self.players):
+                    if _r == 'evil':
+                        await self.Pm(id, f'{self.nameMap[_id]} is evil.')
+            elif r == 'percival':
+                for _r, _id in zip(roles, self.players):
+                    if _r == 'merlin':
+                        await self.Pm(id, f'{self.nameMap[_id]} is merlin.')
             elif e:
-                for e, _id in zip(evil, self.players):
-                    if e and id != _id:
+                for _e, _id in zip(evil, self.players):
+                    if _e and id != _id:
                         await self.Pm(id, f'{self.nameMap[_id]} is also evil.')
         await self._Turn1()
 
@@ -179,8 +192,8 @@ class Game:
 
         self.fails = 0
         
-        # evilFn = lambda p:evil[self.players.index(p.id)]
-        evilFn = lambda p:True
+        evilFn = lambda p:evil[self.players.index(p.id)]
+        # evilFn = lambda p:True
         self.badPlayers = filter(evilFn, self.selectPlayers)
         for p in self.badPlayers:
             failMsg = await self.Pm(p.id, 'Please vote to `succeed` or `fail`' +
@@ -198,6 +211,7 @@ class Game:
                         timeout = False
                         break
 
+                attemptsLeft = maxAttempts - attempt - 1
                 if timeout:
                     failMsg = await self.Pm(p.id, 'Timed out waiting for your' +
                     f' vote. You have {attemptsLeft} attempts left otherwise ' +
@@ -210,7 +224,6 @@ class Game:
                     self.fails += 1
                     break
                 
-                attemptsLeft = maxAttempts - attempt - 1
                 failMsg = await self.Pm(p.id, 'Please vote to succeed or fail' +
                     f' the quest using `succeed` or `fail`, not `{msg}`. You ' +
                     f'have {attemptsLeft} attempts left otherwise you will ' +
